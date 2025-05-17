@@ -1,0 +1,215 @@
+﻿@using SimTimer.Services
+@using SimTimer.Models
+@using SimTimer.Components
+@using ActualLab.Fusion
+@using System.Diagnostics
+
+@inject ITimerService TimerService
+
+<div class="hero">
+    <div class="mains">
+        <h1>Timer</h1>
+        <div class="timebox">
+            <div class="time">
+                <h2 id="hours">@(newTimer != null ? (newTimer.Duration - newTimer.ElapsedTime).Hours : "00")</h2>
+                <p>Hours</p>
+            </div>
+            <div class="time">
+                <h2 id="minutes">@(newTimer != null ? (newTimer.Duration - newTimer.ElapsedTime).Minutes : "00")</h2>
+                <p>Minutes</p>
+            </div>
+            <div class="time">
+                <h2 id="seconds">@(newTimer != null ? (newTimer.Duration - newTimer.ElapsedTime).Seconds : "00")</h2>
+                <p>Seconds</p>
+            </div>
+        </div>
+
+        <button class="btn_set_new" @onclick=OpenSetTimerModal>SET NEW ONE</button>
+
+        <div>
+            <button @onclick=StartTimer disabled="@(newTimer == null || IsRunning)">START</button>
+            <button @onclick=StopTimer disabled="@(newTimer == null)">STOP</button>
+            <button @onclick=PauseTimer disabled="@(newTimer == null || !IsRunning)">PAUSE</button>
+            <button @onclick=ResumeTimer disabled="@(newTimer == null || !newTimer.IsPaused)">RESUME</button>
+        </div>
+
+        @if (newTimer != null)
+        {
+            <p>Started: @newTimer.StartTime.ToLocalTime()</p>
+            <p>Ends: @newTimer.EndTime.ToLocalTime()</p>
+            @* <p>Remaining: @(newTimer.Duration - newTimer.ElapsedTime)</p> *@
+
+            <div class="progress-container">
+                <div class="progress-bar" style="width:@ProgressPercentage%"></div>
+            </div>
+        }
+    </div>
+
+    <ul class="history__list">
+    @if (timerHistory != null && timerHistory.Count > 0) {
+        foreach (var timer in timerHistory)
+        {
+            <li class="timer-history">Started: @timer.StartTime.ToLocalTime(), Ended: @timer.EndTime.ToLocalTime()</li>
+        }
+    }
+    </ul>
+    
+    <SetTimerModal @ref=setTimerModal NewTimerChanged="NewTimerChanged"></SetTimerModal>
+</div>
+
+<Toast @ref=toast/>
+
+@code {
+    private TimerModel? newTimer;
+    private List<TimerModel>? timerHistory = new();
+    private System.Timers.Timer? _timer;
+    private Stopwatch stopwatch = new();
+    private DateTime? StartTime;
+    private DateTime? EndTime;
+    private TimeSpan TimeLeft;
+
+    private bool IsRunning = false;
+    private DateTime? PausedTime;
+
+    private SetTimerModal? setTimerModal;
+    private Toast? toast;
+
+    private double ProgressPercentage => 
+        newTimer != null && newTimer.Duration.TotalSeconds > 0
+            ? Math.Min(100, (newTimer.ElapsedTime.TotalSeconds / newTimer.Duration.TotalSeconds) * 100)
+            : 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        timerHistory = await TimerService.GetAllAsync();
+    }
+
+    private void OpenSetTimerModal()
+    {
+        setTimerModal?.Open();
+    }
+
+    private async Task NewTimerChanged(TimerModel timer)
+    {
+        newTimer = timer;
+        newTimer.StartTime = DateTime.UtcNow;
+        newTimer.EndTime = newTimer.StartTime + newTimer.Duration;
+        newTimer.ElapsedTime = TimeSpan.Zero;
+        newTimer.IsActive = false;
+        newTimer.IsPaused = false;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void StartTimer()
+    {
+        if (newTimer == null) return;
+
+        StartTime = DateTime.UtcNow;
+        EndTime = StartTime.Value + newTimer.Duration;
+
+        newTimer.StartTime = StartTime.Value;
+        newTimer.EndTime = EndTime.Value;
+        newTimer.IsActive = true;
+        newTimer.IsPaused = false;
+        newTimer.ElapsedTime = TimeSpan.Zero;
+
+        stopwatch.Restart();
+
+        _timer = new System.Timers.Timer(200);
+        _timer.Elapsed += async (_, _) => await UpdateTimerAsync();
+        _timer.Start();
+
+        IsRunning = true;
+    }
+
+    private async Task UpdateTimerAsync()
+    {
+        if (newTimer == null || !newTimer.IsActive)
+            return;
+
+        var elapsed = stopwatch.Elapsed;
+
+        if (elapsed >= newTimer.Duration)
+        {
+            stopwatch.Stop();
+            newTimer.ElapsedTime = newTimer.Duration;
+            newTimer.IsActive = false;
+            IsRunning = false;
+
+            _timer?.Stop();
+            _timer?.Dispose();
+
+            newTimer.EndTime = DateTime.UtcNow;
+
+            await InvokeAsync(async () =>
+            {
+                newTimer.Id = 0;
+                await TimerService.AddAsync(newTimer);
+                timerHistory = await TimerService.GetAllAsync();
+                await toast?.Show("Timer finished!");
+
+                StateHasChanged();
+            });
+        }
+        else
+        {
+            newTimer.ElapsedTime = elapsed;
+            TimeLeft = newTimer.Duration - elapsed;
+
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void PauseTimer()
+    {
+        if (!IsRunning || newTimer == null) return;
+
+        _timer?.Stop();
+        stopwatch.Stop();
+
+        PausedTime = DateTime.UtcNow;
+        newTimer.IsPaused = true;
+        IsRunning = false;
+    }
+
+    private void ResumeTimer()
+    {
+        if (IsRunning || newTimer == null || !newTimer.IsPaused) return;
+
+        stopwatch.Start();
+        _timer?.Start();
+
+        var pauseDuration = DateTime.UtcNow - PausedTime.Value;
+        newTimer.StartTime = newTimer.StartTime.Add(pauseDuration);
+        newTimer.EndTime = newTimer.EndTime.Add(pauseDuration);
+        newTimer.IsPaused = false;
+        IsRunning = true;
+    }
+
+    private async Task StopTimer()
+    {
+        if (newTimer == null) return;
+
+        _timer?.Stop();
+        _timer?.Dispose();
+        stopwatch.Stop();
+        stopwatch.Reset();
+
+        IsRunning = false;
+        newTimer.IsActive = false;
+        newTimer.IsPaused = false;
+        newTimer = null;
+
+        StartTime = null;
+        EndTime = null;
+        TimeLeft = TimeSpan.Zero;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+    }
+}

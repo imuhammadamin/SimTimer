@@ -1,0 +1,20 @@
+﻿@namespace SimTimer.Components
+
+<div class="toast" style="display:@(Visible ? "block" : "none")">
+    <p>@Message</p>
+</div>
+
+@code {
+    [Parameter] public string Message { get; set; }
+    private bool Visible { get; set; }
+
+    public async Task Show(string message, int duration = 3000)
+    {
+        Message = message;
+        Visible = true;
+        StateHasChanged();
+        await Task.Delay(duration);
+        Visible = false;
+        StateHasChanged();
+    }
+}

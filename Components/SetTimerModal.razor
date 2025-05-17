@@ -1,0 +1,72 @@
+﻿@namespace SimTimer.Components
+@using SimTimer.Models
+
+@if (IsVisible)
+{
+    <div class="modal-overlay" @onclick="Close">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h3>Set Timer</h3>
+
+            <div class="modal-inputs">
+                <label>
+                    Hours:
+                    <input type="number" min="0" max="23" @bind="Hours" />
+                </label>
+                <label>
+                    Minutes:
+                    <input type="number" min="0" max="59" @bind="Minutes" />
+                </label>
+                <label>
+                    Seconds:
+                    <input type="number" min="0" max="59" @bind="Seconds" />
+                </label>
+            </div>
+
+            <div class="modal-buttons">
+                <button @onclick="Close">Close</button>
+                <button @onclick="Save">Save</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public EventCallback<TimerModel> NewTimerChanged { get; set; }
+
+    private bool IsVisible { get; set; }
+
+    private TimerModel NewTimer = new TimerModel();
+
+    public int Hours { get; set; }
+    public int Minutes { get; set; }
+    public int Seconds { get; set; }
+
+    public void Open()
+    {
+        IsVisible = true;
+        StateHasChanged();
+    }
+    public void Close()
+    {
+        IsVisible = false;
+        StateHasChanged();
+    }
+
+    private void Save()
+    {
+        Console.WriteLine($"Timer {Hours}h {Minutes}m {Seconds}s");
+
+        if (NewTimer is null) NewTimer = new();
+
+        NewTimer.StartTime = DateTime.UtcNow;
+        NewTimer.EndTime = DateTime.UtcNow.AddHours(Hours).AddMinutes(Minutes).AddSeconds(Seconds);
+        NewTimer.Duration = new TimeSpan(Hours, Minutes, Seconds);
+        NewTimer.ElapsedTime = new TimeSpan(0, 0, 0);
+        NewTimer.IsActive = true;
+        NewTimer.IsPaused = false;
+
+        NewTimerChanged.InvokeAsync(NewTimer);
+        Close();
+    }
+}

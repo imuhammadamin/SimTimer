@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: simtimer_web
+    ports:
+      - "8080:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=simtimerdb;Username=postgres;Password=yourpassword
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15
+    container_name: simtimer_db
+    restart: always
+    environment:
+      POSTGRES_DB: simtimerdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: yourpassword
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
