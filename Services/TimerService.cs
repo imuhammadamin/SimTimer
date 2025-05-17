@@ -22,11 +22,11 @@ public class TimerService : ITimerService
     public Task<bool> DeleteAsync(int id) =>
         timerRepository.DeleteAsync(id);
 
-    //[ComputeMethod]
+    [ComputeMethod]
     public virtual async Task<List<TimerModel>> GetAllAsync(Expression<Func<TimerModel, bool>>? expression = null) =>
         (await timerRepository.GetAllAsync(expression)).OrderByDescending(x => x.Id).ToList();
 
-    //[ComputeMethod]
+    [ComputeMethod]
     public virtual Task<TimerModel?> GetAsync(Expression<Func<TimerModel, bool>> expression) =>
         timerRepository.GetAsync(expression);
 
